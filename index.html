@@ -258,8 +258,8 @@ async function fetchAll(){
     const B='https://fapi.binance.com';
     const [eK,tK,dK,fR,oI,t24,pI]=await Promise.all([
       fetchBinance(`${B}/fapi/v1/klines?symbol=BTCUSDT&interval=${entryTf}&limit=${limit}`),
-      fetchBinance(`${B}/fapi/v1/klines?symbol=BTCUSDT&interval=4h&limit=60`),
-      fetchBinance(`${B}/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=14`),
+      fetchBinance(`${B}/fapi/v1/klines?symbol=BTCUSDT&interval=4h&limit=90`),
+      fetchBinance(`${B}/fapi/v1/klines?symbol=BTCUSDT&interval=1d&limit=30`),
       fetchBinance(`${B}/fapi/v1/fundingRate?symbol=BTCUSDT&limit=8`),
       fetchBinance(`${B}/fapi/v1/openInterest?symbol=BTCUSDT`),
       fetchBinance(`${B}/fapi/v1/ticker/24hr?symbol=BTCUSDT`),
@@ -316,7 +316,7 @@ function buildPrompt(d,goal,sr,strategy){
   const dHigh=Math.max(...d.dailyKlines.map(k=>k.h));
   const dLow=Math.min(...d.dailyKlines.map(k=>k.l));
   const entry50=d.entryKlines.slice(-50);
-  const trend30=d.trendKlines.slice(-30);
+  const trend30=d.trendKlines.slice(-45);
   const pctNeeded=((goal.tgt/goal.pos)*100).toFixed(3);
   const minProfit=Math.round(goal.tgt*0.75);
   const maxProfit=Math.round(goal.tgt*1.5);
@@ -353,11 +353,11 @@ Mark: $${d.markPrice.toFixed(2)} | 24h chg: ${d.t24.chg.toFixed(2)}%
 24h High: $${d.t24.high.toFixed(2)} | Low: $${d.t24.low.toFixed(2)} | Vol: $${(d.t24.qvol/1e9).toFixed(2)}B
 OI: ${d.oi.val.toFixed(0)} BTC | Funding: ${(d.nextFunding*100).toFixed(4)}% | Avg: ${avgFr}%
 
-DAILY CANDLES (last 14):
+DAILY CANDLES (last 30):
 ${d.dailyKlines.map((k,i)=>'[D'+(i+1)+'] '+fmtK(k)).join('\n')}
 14d High: $${dHigh.toFixed(2)} | Low: $${dLow.toFixed(2)}
 
-4H TREND CANDLES (last 30):
+4H TREND CANDLES (last 45):
 ${trend30.map((k,i)=>'[4H'+(i+1)+'] '+fmtK(k)).join('\n')}
 
 ${d.entryTf.toUpperCase()} ENTRY CANDLES (last 50):
