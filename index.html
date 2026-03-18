@@ -355,6 +355,7 @@ YOUR TASK:
 4. Identify the trend target zone (where price is heading in 4-8h)
 5. Give EXACT entry trigger rules (what candle pattern to wait for)
 6. Identify key support/resistance levels to draw on chart
+7. Project 8 future ${d.entryTf} candles showing the realistic price path from entry to TP — these will be drawn on the chart so the trader can see visually how price might move to hit the $${goal.tgt} target. Make them realistic with pullbacks, consolidations, and the final candle near tp_price. Each candle open = previous candle close.
 
 Respond ONLY with valid JSON, no markdown:
 {
@@ -544,7 +545,8 @@ function drawChart(r,d){
   const PAD={top:30,bottom:70,left:8,right:90};
   // Chart width = max(container width, enough for all candles)
   const containerW=canvas.parentElement.offsetWidth||900;
-  const minW=PAD.left+PAD.right+N*CANDLE_W;
+  const projCount=(r.projected_candles||[]).length;
+  const minW=PAD.left+PAD.right+(N+projCount)*CANDLE_W;
   const W=Math.max(containerW, minW);
   // Auto height: scale proportionally but min 380, max 520
   const chartH=Math.min(520,Math.max(380,Math.round(W*0.38)));
@@ -562,7 +564,9 @@ function drawChart(r,d){
   // collect all levels for price range
   const allH=all.map(k=>k.h);
   const allL=all.map(k=>k.l);
-  const extras=[r.tp_price,r.sl,r.entry_zone_low,r.entry_zone_high,r.trend_target_low,r.trend_target_high].filter(Boolean).map(Number);
+  const projCandles=(r.projected_candles||[]).filter(c=>c.h&&c.l);
+  const projH=projCandles.map(c=>+c.h); const projL=projCandles.map(c=>+c.l);
+  const extras=[r.tp_price,r.sl,r.entry_zone_low,r.entry_zone_high,r.trend_target_low,r.trend_target_high,...projH,...projL].filter(Boolean).map(Number);
   const rawMax=Math.max(...allH,...extras);
   const rawMin=Math.min(...allL,...extras);
   const pad=(rawMax-rawMin)*0.05;
@@ -653,15 +657,61 @@ function drawChart(r,d){
     ctx.lineWidth=0.5; ctx.strokeRect(x-bodyW/2,top,bodyW,bh);
   });
 
-  // TIME LABELS — every candle, rotated 90deg
+  // PROJECTED CANDLES — drawn after real candles with purple dashed style
+  if(projCandles.length){
+    const startI=N; // projected candles start right after real ones
+    // dim separator line
+    ctx.strokeStyle='rgba(168,85,247,0.3)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(cx(startI-1)+cW/2,PAD.top); ctx.lineTo(cx(startI-1)+cW/2,PAD.top+chartH); ctx.stroke();
+    ctx.setLineDash([]);
+    // label
+    ctx.fillStyle='rgba(168,85,247,0.8)'; ctx.font='bold 9px Space Mono,monospace'; ctx.textAlign='center';
+    ctx.fillText('PROJECTED →',cx(startI)+cW*2,PAD.top+14);
+
+    projCandles.forEach((k,pi)=>{
+      const i=startI+pi;
+      const x=cx(i);
+      const bull=k.c>=k.o;
+      const isLast=pi===projCandles.length-1;
+      const col=isLast?'rgba(247,147,26,0.95)':'rgba(168,85,247,0.85)';
+      const wickCol=isLast?'rgba(247,147,26,0.5)':'rgba(168,85,247,0.4)';
+
+      // projected bg
+      ctx.fillStyle=isLast?'rgba(247,147,26,0.04)':'rgba(168,85,247,0.04)';
+      ctx.fillRect(x-cW/2,PAD.top,cW,chartH);
+
+      // wick
+      ctx.strokeStyle=wickCol; ctx.lineWidth=1.5; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x,py(+k.h)); ctx.lineTo(x,py(+k.l)); ctx.stroke();
+
+      // body — dashed outline
+      const top=py(Math.max(+k.o,+k.c));
+      const bot=py(Math.min(+k.o,+k.c));
+      const bh=Math.max(2,bot-top);
+      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.setLineDash([3,2]);
+      ctx.strokeRect(x-bodyW/2,top,bodyW,bh);
+      ctx.fillStyle=isLast?'rgba(247,147,26,0.10)':'rgba(168,85,247,0.08)';
+      ctx.fillRect(x-bodyW/2,top,bodyW,bh);
+      ctx.setLineDash([]);
+
+      // candle note tooltip on hover — just show on last candle
+      if(isLast){
+        ctx.fillStyle='rgba(247,147,26,0.9)'; ctx.font='bold 8px Space Mono,monospace'; ctx.textAlign='center';
+        ctx.fillText('TP',x,py(+k.h)-5);
+      }
+    });
+  }
+
+  // TIME LABELS — every candle + projected, rotated 90deg
   ctx.font='9px Space Mono,monospace';
-  all.forEach((k,i)=>{
+  const allWithProj=[...all,...projCandles.map((k,pi)=>({...k,t:all[all.length-1].t+tfMs*(pi+1),isProj:true}))];
+  allWithProj.forEach((k,i)=>{
     const x=cx(i);
     const t=new Date(k.t).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:TZ});
     ctx.save();
     ctx.translate(x, PAD.top+chartH+6);
     ctx.rotate(-Math.PI/2);
-    ctx.fillStyle='rgba(100,115,135,0.85)';
+    ctx.fillStyle=k.isProj?'rgba(168,85,247,0.7)':'rgba(100,115,135,0.85)';
     ctx.textAlign='left';
     ctx.fillText(t, 0, 0);
     ctx.restore();
