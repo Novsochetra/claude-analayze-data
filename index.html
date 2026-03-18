@@ -540,16 +540,19 @@ function drawChart(r,d){
   const tfMs={'15m':900000,'30m':1800000,'1h':3600000}[d.entryTf]||900000;
   const all=[...candles];
   const N=all.length;
+
+  // get projected candles early so we can use count for sizing
+  const projCandles=(r.projected_candles||[]).filter(c=>c.h&&c.l);
+  const totalN=N+projCandles.length;
+
   const DPR=window.devicePixelRatio||1;
   const CANDLE_W=16;
   const PAD={top:30,bottom:70,left:8,right:90};
-  // Chart width = max(container width, enough for all candles)
   const containerW=canvas.parentElement.offsetWidth||900;
-  const projCount=(r.projected_candles||[]).length;
-  const minW=PAD.left+PAD.right+(N+projCount)*CANDLE_W;
+  // width must fit ALL candles (real + projected)
+  const minW=PAD.left+PAD.right+totalN*CANDLE_W;
   const W=Math.max(containerW, minW);
-  // Auto height: scale proportionally but min 380, max 520
-  const chartH=Math.min(520,Math.max(380,Math.round(W*0.38)));
+  const chartH=Math.min(520,Math.max(380,Math.round(containerW*0.42)));
   const H=chartH+PAD.top+PAD.bottom;
   canvas.width=W*DPR;
   canvas.height=H*DPR;
@@ -557,14 +560,13 @@ function drawChart(r,d){
   canvas.style.height=H+'px';
   ctx.scale(DPR,DPR);
 
-  // If W > containerW, candles spread evenly; else fixed 16px
-  const cW=W>containerW?CANDLE_W:Math.floor((W-PAD.left-PAD.right)/N);
+  // cW based on totalN so all candles (real+projected) fill evenly or stay 16px
+  const cW=W>containerW?CANDLE_W:Math.floor((W-PAD.left-PAD.right)/totalN);
   const bodyW=Math.max(3,cW-4);
 
   // collect all levels for price range
   const allH=all.map(k=>k.h);
   const allL=all.map(k=>k.l);
-  const projCandles=(r.projected_candles||[]).filter(c=>c.h&&c.l);
   const projH=projCandles.map(c=>+c.h); const projL=projCandles.map(c=>+c.l);
   const extras=[r.tp_price,r.sl,r.entry_zone_low,r.entry_zone_high,r.trend_target_low,r.trend_target_high,...projH,...projL].filter(Boolean).map(Number);
   const rawMax=Math.max(...allH,...extras);
