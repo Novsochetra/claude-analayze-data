@@ -412,7 +412,7 @@ async function analyze(){
   btn.disabled=true;
   setOutput('<div class="loading-wrap"><div class="spinner"></div><div class="loading-txt">ANALYZING + BUILDING CHART...</div></div>');
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch('https://odd-bird-d4a1.sochetra12-nov.workers.dev/',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         model:'claude-sonnet-4-20250514',max_tokens:1500,
