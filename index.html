@@ -388,7 +388,7 @@ async function analyze(){
     const res=await fetch('https://odd-bird-d4a1.sochetra12-nov.workers.dev/',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',max_tokens:1500,
+        model:'claude-opus-4-5',max_tokens:2000,
         system:'You are a professional crypto futures analyst. Respond with valid JSON only, no markdown.',
         messages:[{role:'user',content:buildPrompt(cachedData,sr,strategy)}]
       })
@@ -435,7 +435,7 @@ function renderAll(r,d){
           (r.sl?'<span class="pill p-red">SL '+r.sl+'</span>':'')+
         '</div>'+
       '</div>'+
-      '<canvas id="chart-canvas" height="320"></canvas>'+
+      '<canvas id="chart-canvas" style="width:100%;display:block"></canvas>'+
     '</div>';
 
   // SIGNAL
@@ -532,108 +532,144 @@ function drawChart(r, d){
   const canvas=document.getElementById('chart-canvas');
   if(!canvas) return;
   const ctx=canvas.getContext('2d');
-  const W=canvas.offsetWidth||canvas.parentElement.offsetWidth||800;
-  const H=320;
-  canvas.width=W; canvas.height=H;
 
-  // Use last 40 candles + 1 predicted
-  const candles=d.entryKlines.slice(-40);
+  // Show last 30 candles so each has enough width for a time label
+  const candles=d.entryKlines.slice(-30);
+  const tfMs={'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000}[d.entryTf]||900000;
   const predicted={
-    t:candles[candles.length-1].t+60000,
+    t:candles[candles.length-1].t+tfMs,
     o:+r.predicted_next_open, h:+r.predicted_next_high,
     l:+r.predicted_next_low, c:+r.predicted_next_close,
     isPredicted:true
   };
   const all=[...candles,predicted];
+  const N=all.length;
+
+  // Canvas dimensions — tall enough for rotated labels at bottom
+  const W=canvas.offsetWidth||canvas.parentElement.offsetWidth||900;
+  const LABEL_H=52; // space for rotated time labels
+  const H=380+LABEL_H;
+  canvas.width=W; canvas.height=H;
+
+  const PAD={top:28,bottom:LABEL_H,left:8,right:80};
+  const chartH=H-PAD.top-PAD.bottom;
+  const cW=Math.floor((W-PAD.left-PAD.right)/N);
+  const bodyW=Math.max(3,cW-3);
 
   // Price range
   const allH=all.map(k=>k.h); const allL=all.map(k=>k.l);
   const extraLevels=[r.tp1,r.tp2,r.sl,r.entry_zone_low,r.entry_zone_high,r.entry_ideal].filter(Boolean).map(Number);
-  const pMax=Math.max(...allH,...extraLevels);
-  const pMin=Math.min(...allL,...extraLevels);
+  const rawMax=Math.max(...allH,...extraLevels);
+  const rawMin=Math.min(...allL,...extraLevels);
+  const pad=(rawMax-rawMin)*0.04;
+  const pMax=rawMax+pad; const pMin=rawMin-pad;
   const pRange=pMax-pMin||1;
-  const PAD={top:24,bottom:28,left:8,right:72};
-  const cW=Math.floor((W-PAD.left-PAD.right)/all.length);
-  const bodyW=Math.max(2,cW-2);
 
-  const py=p=>PAD.top+(1-(p-pMin)/pRange)*(H-PAD.top-PAD.bottom);
+  const py=p=>PAD.top+(1-(p-pMin)/pRange)*chartH;
   const cx=i=>PAD.left+i*cW+cW/2;
 
   // BG
-  ctx.fillStyle='#0e1117'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#080a0d'; ctx.fillRect(0,0,W,H);
 
-  // Grid lines
-  const steps=5;
-  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+  // Chart area bg
+  ctx.fillStyle='#0e1117'; ctx.fillRect(PAD.left,PAD.top,W-PAD.left-PAD.right,chartH);
+
+  // Horizontal grid lines + price labels
+  const steps=6;
   for(let i=0;i<=steps;i++){
-    const y=PAD.top+((H-PAD.top-PAD.bottom)/steps)*i;
-    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(W-PAD.right,y); ctx.stroke();
+    const y=PAD.top+(chartH/steps)*i;
     const price=pMax-((pMax-pMin)/steps)*i;
-    ctx.fillStyle='rgba(90,98,112,0.8)'; ctx.font='10px Space Mono,monospace';
-    ctx.textAlign='left'; ctx.fillText('$'+price.toFixed(0),W-PAD.right+4,y+4);
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(W-PAD.right,y); ctx.stroke();
+    ctx.fillStyle='rgba(120,130,145,0.9)'; ctx.font='10px Space Mono,monospace';
+    ctx.textAlign='left'; ctx.fillText('$'+price.toFixed(0),W-PAD.right+5,y+4);
+  }
+
+  // Vertical grid lines (every 5 candles)
+  for(let i=0;i<N;i++){
+    if(i%5===0){
+      ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(cx(i),PAD.top); ctx.lineTo(cx(i),PAD.top+chartH); ctx.stroke();
+    }
   }
 
   // Entry zone band
   if(r.entry_zone_low&&r.entry_zone_high){
     const y1=py(+r.entry_zone_high); const y2=py(+r.entry_zone_low);
-    ctx.fillStyle='rgba(247,147,26,0.07)';
+    ctx.fillStyle='rgba(247,147,26,0.08)';
     ctx.fillRect(PAD.left,y1,W-PAD.left-PAD.right,y2-y1);
-    ctx.strokeStyle='rgba(247,147,26,0.25)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.strokeStyle='rgba(247,147,26,0.35)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.moveTo(PAD.left,y1); ctx.lineTo(W-PAD.right,y1); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(PAD.left,y2); ctx.lineTo(W-PAD.right,y2); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle='rgba(247,147,26,0.9)'; ctx.font='9px Space Mono,monospace'; ctx.textAlign='left';
-    ctx.fillText('ENTRY ZONE',PAD.left+4,y1-4);
+    ctx.fillStyle='rgba(247,147,26,0.95)'; ctx.font='bold 9px Space Mono,monospace'; ctx.textAlign='left';
+    ctx.fillText('ENTRY ZONE',PAD.left+6,y1-5);
   }
 
-  // TP1 line
-  if(r.tp1){ drawLevel(ctx,py(+r.tp1),PAD.left,W-PAD.right,'rgba(29,185,84,0.6)','TP1 '+r.tp1,[4,4]); }
-  // TP2 line
-  if(r.tp2){ drawLevel(ctx,py(+r.tp2),PAD.left,W-PAD.right,'rgba(29,185,84,0.3)','TP2 '+r.tp2,[4,4]); }
-  // SL line
-  if(r.sl){ drawLevel(ctx,py(+r.sl),PAD.left,W-PAD.right,'rgba(224,59,59,0.6)','SL '+r.sl,[4,4]); }
+  // Level lines
+  if(r.tp1){ drawLevel(ctx,py(+r.tp1),PAD.left,W-PAD.right,'rgba(29,185,84,0.7)','TP1 $'+r.tp1,[5,3]); }
+  if(r.tp2){ drawLevel(ctx,py(+r.tp2),PAD.left,W-PAD.right,'rgba(29,185,84,0.35)','TP2 $'+r.tp2,[5,3]); }
+  if(r.sl){  drawLevel(ctx,py(+r.sl), PAD.left,W-PAD.right,'rgba(224,59,59,0.7)', 'SL  $'+r.sl,[5,3]); }
 
   // Candles
   all.forEach((k,i)=>{
     const x=cx(i);
     const bull=k.c>=k.o;
-    const col=k.isPredicted?'rgba(168,85,247,0.9)':(bull?'#1db954':'#e03b3b');
-    const wickCol=k.isPredicted?'rgba(168,85,247,0.5)':(bull?'rgba(29,185,84,0.6)':'rgba(224,59,59,0.6)');
+    const bullCol='#1db954'; const bearCol='#e03b3b';
+    const purCol='rgba(168,85,247,0.95)';
+    const col=k.isPredicted?purCol:(bull?bullCol:bearCol);
+    const wickCol=k.isPredicted?'rgba(168,85,247,0.5)':(bull?'rgba(29,185,84,0.7)':'rgba(224,59,59,0.7)');
 
-    // Predicted candle background
+    // Predicted bg highlight
     if(k.isPredicted){
-      ctx.fillStyle='rgba(168,85,247,0.06)';
-      ctx.fillRect(x-cW/2,PAD.top,cW,H-PAD.top-PAD.bottom);
-      ctx.fillStyle='rgba(168,85,247,0.7)'; ctx.font='9px Space Mono,monospace'; ctx.textAlign='center';
-      ctx.fillText('NEXT →',x,PAD.top+12);
+      ctx.fillStyle='rgba(168,85,247,0.07)';
+      ctx.fillRect(x-cW/2,PAD.top,cW,chartH);
+      ctx.fillStyle='rgba(168,85,247,0.8)'; ctx.font='bold 9px Space Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText('PREDICTED',x,PAD.top+13);
     }
 
     // Wick
-    ctx.strokeStyle=wickCol; ctx.lineWidth=1; ctx.setLineDash([]);
+    ctx.strokeStyle=wickCol; ctx.lineWidth=1.5; ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(x,py(k.h)); ctx.lineTo(x,py(k.l)); ctx.stroke();
 
     // Body
     const top=py(Math.max(k.o,k.c));
     const bot=py(Math.min(k.o,k.c));
-    const bh=Math.max(1,bot-top);
+    const bh=Math.max(2,bot-top);
     if(k.isPredicted){
-      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.setLineDash([3,2]);
+      ctx.strokeStyle=purCol; ctx.lineWidth=1.5; ctx.setLineDash([4,2]);
       ctx.strokeRect(x-bodyW/2,top,bodyW,bh);
       ctx.setLineDash([]);
-    } else {
-      ctx.fillStyle=col;
+      ctx.fillStyle='rgba(168,85,247,0.12)';
       ctx.fillRect(x-bodyW/2,top,bodyW,bh);
+    } else {
+      // Body fill
+      ctx.fillStyle=col; ctx.fillRect(x-bodyW/2,top,bodyW,bh);
+      // Thin border for clarity
+      ctx.strokeStyle=bull?'rgba(29,185,84,0.4)':'rgba(224,59,59,0.4)';
+      ctx.lineWidth=0.5; ctx.setLineDash([]);
+      ctx.strokeRect(x-bodyW/2,top,bodyW,bh);
     }
   });
 
-  // Time labels (every 8 candles)
-  ctx.fillStyle='rgba(90,98,112,0.7)'; ctx.font='9px Space Mono,monospace'; ctx.textAlign='center';
-  candles.forEach((k,i)=>{
-    if(i%8===0){
-      const t=new Date(k.t).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Phnom_Penh'});
-      ctx.fillText(t,cx(i),H-8);
-    }
+  // TIME LABELS — rotated -45deg on every candle
+  ctx.font='9px Space Mono,monospace';
+  all.forEach((k,i)=>{
+    const x=cx(i);
+    const t=new Date(k.t).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Phnom_Penh'});
+    const labelY=PAD.top+chartH+8;
+    ctx.save();
+    ctx.translate(x, labelY);
+    ctx.rotate(-Math.PI/4);
+    ctx.fillStyle=k.isPredicted?'rgba(168,85,247,0.9)':'rgba(100,115,130,0.85)';
+    ctx.textAlign='right';
+    ctx.fillText(t, 0, 0);
+    ctx.restore();
   });
+
+  // Separator line between chart and labels
+  ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(PAD.left,PAD.top+chartH); ctx.lineTo(W-PAD.right,PAD.top+chartH); ctx.stroke();
 }
 
 function drawLevel(ctx,y,x1,x2,color,label,dash){
