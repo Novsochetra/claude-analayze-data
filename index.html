@@ -55,13 +55,13 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .sc-lbl{font-family:'Space Mono',monospace;font-size:9px;color:var(--mu);letter-spacing:1px;margin-bottom:4px}
 .sc-val{font-family:'Space Mono',monospace;font-size:12px;font-weight:700}
 .sc-sub{font-size:10px;color:var(--mu2);margin-top:2px}
-.c-grn{color:var(--grn)}.c-red{color:var(--red)}.c-acc{color:var(--acc)}.c-ylw{color:var(--ylw)}
+.c-grn{color:var(--grn)}.c-red{color:var(--red)}.c-acc{color:var(--acc)}.c-ylw{color:var(--ylw)}.c-pur{color:var(--pur)}
 .output{padding:20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
 .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--mu);padding:40px}
 .empty-ico{font-size:26px;opacity:.2}
 
 /* PROFIT TARGET BANNER */
-.profit-banner{background:linear-gradient(135deg,rgba(29,185,84,0.15),rgba(29,185,84,0.05));border:1px solid rgba(29,185,84,0.35);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.profit-banner{background:linear-gradient(135deg,rgba(29,185,84,0.15),rgba(29,185,84,0.05));border:1px solid rgba(29,185,84,0.35);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 .pb-box{display:flex;flex-direction:column;gap:4px}
 .pb-lbl{font-family:'Space Mono',monospace;font-size:9px;color:var(--mu);letter-spacing:1px}
 .pb-val{font-family:'Space Mono',monospace;font-size:16px;font-weight:700}
@@ -318,24 +318,42 @@ function buildPrompt(d,goal,sr,strategy){
   const entry50=d.entryKlines.slice(-50);
   const trend30=d.trendKlines.slice(-30);
   const pctNeeded=((goal.tgt/goal.pos)*100).toFixed(3);
+  const minProfit=Math.round(goal.tgt*0.75);
+  const maxProfit=Math.round(goal.tgt*1.5);
+  const candlesPerHour=Math.round(3600000/({'15m':900000,'30m':1800000,'1h':3600000}[d.entryTf]||900000));
 
-  return `You are a professional BTC/USDT futures trader. Analyze all data and produce a precise trade plan.
+  const ppHour=parseInt(new Date().toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'Asia/Phnom_Penh'}));
+  const ppTimeStr=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Phnom_Penh'});
+  let session,sessionExit,maxHours;
+  if(ppHour>=1&&ppHour<10){session='Session 1 — Asian Overnight';sessionExit='10:00 AM PP';maxHours=10-ppHour;}
+  else if(ppHour>=14&&ppHour<18){session='Session 2 — London Open';sessionExit='5:30 PM PP';maxHours=17.5-ppHour;}
+  else if(ppHour>=20||ppHour===0){session='Session 3 — NY Open';sessionExit='11:30 PM PP';maxHours=ppHour>=20?23.5-ppHour:1;}
+  else{session='Between Sessions';sessionExit='Wait for next session';maxHours=0;}
 
-TRADER GOAL:
-- Capital: $${goal.cap} | Leverage: ${goal.lev}x | Position size: $${goal.pos}
-- Profit target: $${goal.tgt} per trade
-- % move needed to hit target: ${pctNeeded}% (this is the MINIMUM price move required)
-- Time horizon: flexible — trader will hold as long as needed to hit $${goal.tgt}
-- Current BTC price: $${d.markPrice.toFixed(2)}
-- TP price for LONG = entry + (entry × ${pctNeeded}/100)
-- TP price for SHORT = entry - (entry × ${pctNeeded}/100)
+  return `You are a professional BTC/USDT futures trader. Analyze all data for a trader in Phnom Penh (UTC+7).
 
-MARKET DATA (fetched ${ppDT(d.fetchedAt)} Phnom Penh time):
+TRADER SETUP:
+- Capital: $${goal.cap} | Leverage: ${goal.lev}x | Position: $${goal.pos}
+- Profit goal: ~$${goal.tgt} BUT FLEXIBLE — anywhere from $${minProfit} to $${maxProfit} is fine
+- Do NOT force exact $${goal.tgt} — find the most natural TP based on real structure
+- % move for $${goal.tgt} target: ${pctNeeded}% (~$${(d.markPrice*parseFloat(pctNeeded)/100).toFixed(0)} at current price)
+- Current BTC Mark Price: $${d.markPrice.toFixed(2)}
+
+CURRENT SESSION: ${session}
+- Current PP time: ${ppTimeStr}
+- Must exit by: ${sessionExit} (max ${maxHours.toFixed(1)} hours left this session)
+- Trader's 3 daily sessions (Phnom Penh UTC+7):
+  * Session 1: Enter ~1:00 AM PP → exit ~10:00 AM PP (Asian session, 9h window)
+  * Session 2: Enter ~2:00 PM PP → exit ~5:30 PM PP (London opens 3:00 PM PP, 3.5h window)
+  * Session 3: Enter ~8:30 PM PP → exit ~11:30 PM PP (NY opens 8:00 PM PP, overlap 8-11 PM is best, 3h window)
+- TP MUST be reachable within ${maxHours.toFixed(1)} hours remaining in this session
+
+MARKET DATA (${ppDT(d.fetchedAt)} PP):
 Mark: $${d.markPrice.toFixed(2)} | 24h chg: ${d.t24.chg.toFixed(2)}%
 24h High: $${d.t24.high.toFixed(2)} | Low: $${d.t24.low.toFixed(2)} | Vol: $${(d.t24.qvol/1e9).toFixed(2)}B
-OI: ${d.oi.val.toFixed(0)} BTC | Funding next: ${(d.nextFunding*100).toFixed(4)}% | Avg 8 intervals: ${avgFr}%
+OI: ${d.oi.val.toFixed(0)} BTC | Funding: ${(d.nextFunding*100).toFixed(4)}% | Avg: ${avgFr}%
 
-DAILY CANDLES (last 14 days):
+DAILY CANDLES (last 14):
 ${d.dailyKlines.map((k,i)=>'[D'+(i+1)+'] '+fmtK(k)).join('\n')}
 14d High: $${dHigh.toFixed(2)} | Low: $${dLow.toFixed(2)}
 
@@ -345,23 +363,23 @@ ${trend30.map((k,i)=>'[4H'+(i+1)+'] '+fmtK(k)).join('\n')}
 ${d.entryTf.toUpperCase()} ENTRY CANDLES (last 50):
 ${entry50.map((k,i)=>'['+d.entryTf+(i+1)+'] '+fmtK(k)).join('\n')}
 
-${sr?'TRADER S/R LEVELS: '+sr:''}
+${sr?'TRADER S/R: '+sr:''}
 ${strategy?'TRADER NOTES: '+strategy:''}
 
-YOUR TASK:
-1. Determine trend direction for the NEXT 4-8 HOURS
-2. Calculate the EXACT TP price based on trader's goal ($${goal.tgt} profit on $${goal.pos} position)
-3. Give a realistic entry zone where risk is low
-4. Identify the trend target zone (where price is heading in 4-8h)
-5. Give EXACT entry trigger rules (what candle pattern to wait for)
-6. Identify key support/resistance levels to draw on chart
-7. Project 8 future ${d.entryTf} candles showing the realistic price path from entry to TP — these will be drawn on the chart so the trader can see visually how price might move to hit the $${goal.tgt} target. Make them realistic with pullbacks, consolidations, and the final candle near tp_price. Each candle open = previous candle close.
+TASKS:
+1. Analyze trend — how many hours realistically to reach a natural TP this session?
+2. Set tp_price at the most natural structure level within $${minProfit}-$${maxProfit} profit range
+3. Set estimated_hours = realistic hours for trade (NOT always same number — could be 1.5h, 3h, 6h etc)
+4. Build projected_candles: estimated_hours × ${candlesPerHour} candles per hour (min 4, max 32)
+5. Give exact entry trigger rules
 
 Respond ONLY with valid JSON, no markdown:
 {
   "signal": "LONG"|"SHORT"|"WAIT"|"NEUTRAL",
   "confidence": 0-100,
-  "bias": "1-2 sentence trend direction for next 4-8 hours with price targets",
+  "session": "${session}",
+  "estimated_hours": number,
+  "bias": "1-2 sentences on trend for this session",
   "trend_direction": "UP"|"DOWN"|"SIDEWAYS",
   "trend_target_low": number,
   "trend_target_high": number,
@@ -369,46 +387,36 @@ Respond ONLY with valid JSON, no markdown:
   "entry_zone_high": number,
   "entry_ideal": number,
   "tp_price": number,
-  "tp_note": "explain why this TP is achievable based on structure",
+  "tp_note": "why this TP is realistic within session",
+  "estimated_profit": number,
   "sl": number,
   "sl_note": "why this SL placement",
-  "move_needed_pct": "${pctNeeded}",
-  "profit_if_tp": ${goal.tgt},
-  "rr_ratio": "calculated RR ratio e.g. 1:2.3",
+  "rr_ratio": "e.g. 1:2.1",
   "trigger_rules": [
-    {"step":1,"title":"short title","description":"detailed instruction","condition":"exact condition"},
-    {"step":2,"title":"short title","description":"detailed instruction","condition":"exact condition"},
-    {"step":3,"title":"short title","description":"detailed instruction","condition":"exact condition"},
-    {"step":4,"title":"Trigger candle","description":"exact candle to wait for","condition":"exact candle description"}
+    {"step":1,"title":"title","description":"detail","condition":"condition"},
+    {"step":2,"title":"title","description":"detail","condition":"condition"},
+    {"step":3,"title":"title","description":"detail","condition":"condition"},
+    {"step":4,"title":"Trigger candle","description":"candle to wait for","condition":"exact candle rules"}
   ],
   "entry_candle_pattern": "pattern name",
-  "entry_candle_rules": "3-4 sentences describing exact trigger candle",
-  "false_signal_warning": "what would invalidate this setup",
-  "key_levels": {"support":["price levels as strings"],"resistance":["price levels as strings"]},
-  "patterns": ["detected patterns max 5"],
-  "funding_note": "one sentence on funding impact on this trade",
-  "session_notes": "best time to enter in Phnom Penh time (UTC+7) — London open 3PM, NY open 8PM, overlap 8-11PM",
-  "warnings": ["up to 4 risk warnings"],
-  "projected_candles": [
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0},
-    {"o": 0, "h": 0, "l": 0, "c": 0}
-  ]
+  "entry_candle_rules": "3-4 sentences on exact trigger candle",
+  "false_signal_warning": "what invalidates this",
+  "key_levels": {"support":["levels"],"resistance":["levels"]},
+  "patterns": ["max 5"],
+  "funding_note": "funding impact",
+  "warnings": ["max 4"],
+  "projected_candles": [{"o":0,"h":0,"l":0,"c":0}]
 }
 
-IMPORTANT FOR projected_candles: Replace every 0 with real BTC price numbers.
-- 8 candles showing price path from current price toward tp_price
-- LONG signal = candles trend UP to tp_price, SHORT = trend DOWN
-- Each candle o = previous candle c (connected path)
-- Add realistic wicks: h slightly above body, l slightly below
-- Include 1-2 pullback candles — not a straight line
-- Last candle c must be very close to tp_price
-- All prices must be realistic near current mark price
+CRITICAL — projected_candles rules:
+- Total candles = round(estimated_hours × ${candlesPerHour}) — NOT always 8!
+- Example: 3h trade = ${candlesPerHour*3} candles | 6h trade = ${candlesPerHour*6} candles | 1.5h = ${Math.round(candlesPerHour*1.5)} candles
+- Replace every 0 with REAL BTC prices near $${d.markPrice.toFixed(0)}
+- LONG = candles trend UP to tp_price | SHORT = candles trend DOWN to tp_price
+- Each candle o = previous candle c (no gaps)
+- Add realistic wicks (h above body, l below body by small amount)
+- Include 1-2 natural pullbacks
+- Last candle c must be close to tp_price
 `;
 }
 
@@ -461,19 +469,23 @@ function renderAll(r,d,goal){
 
   // PROFIT BANNER
   const moveNeeded=r.move_needed_pct||((goal.tgt/goal.pos)*100).toFixed(3);
+  const estProfit=r.estimated_profit||goal.tgt;
+  const estHours=r.estimated_hours||'?';
+  const projCount=(r.projected_candles||[]).filter(c=>+c.o>0).length;
   const profitBanner='<div class="profit-banner">'+
     '<div class="pb-box"><div class="pb-lbl">POSITION SIZE</div><div class="pb-val c-acc">$'+goal.pos.toLocaleString()+'</div><div class="pb-sub">$'+goal.cap+' × '+goal.lev+'x</div></div>'+
     '<div class="pb-box"><div class="pb-lbl">MOVE NEEDED</div><div class="pb-val c-grn">'+moveNeeded+'%</div><div class="pb-sub">~$'+(d.markPrice*parseFloat(moveNeeded)/100).toFixed(0)+' price move</div></div>'+
-    '<div class="pb-box"><div class="pb-lbl">TP PRICE</div><div class="pb-val c-grn">$'+num(r.tp_price)+'</div><div class="pb-sub">hits $'+goal.tgt+' profit</div></div>'+
-    '<div class="pb-box"><div class="pb-lbl">R:R RATIO</div><div class="pb-val">'+(r.rr_ratio||'—')+'</div><div class="pb-sub">risk vs reward</div></div>'+
+    '<div class="pb-box"><div class="pb-lbl">TP PRICE</div><div class="pb-val c-grn">$'+num(r.tp_price)+'</div><div class="pb-sub">est. ~$'+estProfit+' profit</div></div>'+
+    '<div class="pb-box"><div class="pb-lbl">EST. TIME</div><div class="pb-val c-pur">~'+estHours+'h</div><div class="pb-sub">'+projCount+' candles projected</div></div>'+
+    '<div class="pb-box"><div class="pb-lbl">R:R</div><div class="pb-val">'+(r.rr_ratio||'—')+'</div><div class="pb-sub">'+(r.session||'').split('—')[0]+'</div></div>'+
   '</div>';
 
   // CHART
   const chartHtml='<div class="chart-wrap">'+
     '<div class="chart-hdr">'+
       '<div style="display:flex;align-items:center;gap:8px">'+
-        '<span style="font-family:Space Mono,monospace;font-size:10px;color:var(--mu2)">'+d.entryTf.toUpperCase()+' CANDLES — LAST 30</span>'+
-        '<span class="pill p-pur">TREND TARGET ZONE →</span>'+
+        '<span style="font-family:Space Mono,monospace;font-size:10px;color:var(--mu2)">'+d.entryTf.toUpperCase()+' CANDLES — LAST 30 + ~'+estHours+'h PROJECTED</span>'+
+        '<span class="pill p-pur">'+((r.session||'').split('—')[1]||'PROJECTED')+' →</span>'+
       '</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
         (r.tp_price?'<span class="pill p-grn">TP $'+num(r.tp_price)+'</span>':'')+
