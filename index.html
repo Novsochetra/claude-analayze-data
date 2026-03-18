@@ -164,8 +164,7 @@ canvas{display:block;width:100%}
     <span class="pill p-mu" id="cache-age"></span>
   </div>
   <div class="hdr-r">
-    <span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--mu)" id="cache-kb"></span>
-    <button class="btn-sm" onclick="clearCache()">CLEAR CACHE</button>
+    <span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--mu2)" id="cache-kb"></span>
   </div>
 </div>
 
@@ -193,22 +192,13 @@ canvas{display:block;width:100%}
       </div>
     </div>
 
-    <div class="row2">
-      <div class="field"><label>Candles</label>
+    <div class="field"><label>Candles</label>
         <select id="limit">
           <option value="50">50</option>
           <option value="100" selected>100</option>
           <option value="200">200</option>
         </select>
       </div>
-      <div class="field"><label>Cache TTL</label>
-        <select id="cache-ttl">
-          <option value="300000">5 min</option>
-          <option value="900000" selected>15 min</option>
-          <option value="3600000">1 hour</option>
-        </select>
-      </div>
-    </div>
 
     <button class="btn-fetch" id="fetch-btn" onclick="fetchAll()">
       <span id="fetch-ico">↓</span>
@@ -243,30 +233,13 @@ canvas{display:block;width:100%}
 </div>
 
 <script>
-const CACHE_KEY = 'btc_v3_cache';
-let cachedData = null;
-let lastResult = null;
-
-/* ── CACHE ── */
-function saveCache(data){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify({ts:Date.now(),data})); updateCacheUI(); }catch(e){} }
-function loadCache(){ try{ const r=localStorage.getItem(CACHE_KEY); return r?JSON.parse(r):null; }catch(e){return null;} }
-function clearCache(){ localStorage.removeItem(CACHE_KEY); cachedData=null; lastResult=null; document.getElementById('fetch-status').textContent='NO DATA'; document.getElementById('fetch-status').className='pill p-mu'; document.getElementById('cache-age').textContent=''; document.getElementById('cache-kb').textContent=''; document.getElementById('snap-wrap').style.display='none'; document.getElementById('analyze-btn').disabled=true; document.getElementById('output').innerHTML='<div class="empty"><div class="empty-ico">◈</div><p>Cache cleared</p></div>'; updateCacheUI(); }
-function updateCacheUI(){ try{ const r=localStorage.getItem(CACHE_KEY); document.getElementById('cache-kb').textContent=r?(r.length/1024).toFixed(1)+' KB':''; }catch(e){} }
-function isFresh(cached,ttl){ return cached&&(Date.now()-cached.ts)<ttl; }
+let cachedData=null;
+let lastResult=null;
 
 /* ── FETCH ── */
 async function fetchBinance(url){ const r=await fetch(url); if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); }
 
 async function fetchAll(){
-  const ttl=parseInt(document.getElementById('cache-ttl').value);
-  const cached=loadCache();
-  if(isFresh(cached,ttl)){
-    cachedData=cached.data;
-    const age=Math.round((Date.now()-cached.ts)/1000);
-    document.getElementById('fetch-status').textContent='CACHED'; document.getElementById('fetch-status').className='pill p-grn';
-    document.getElementById('cache-age').textContent=age+'s AGO'; document.getElementById('cache-age').className='pill p-mu';
-    renderSnap(cachedData); document.getElementById('analyze-btn').disabled=false; return;
-  }
   const entryTf=document.getElementById('entry-tf').value;
   const trendTf=document.getElementById('trend-tf').value;
   const limit=document.getElementById('limit').value;
@@ -293,9 +266,9 @@ async function fetchAll(){
       markPrice:+pI.markPrice, indexPrice:+pI.indexPrice, nextFunding:+pI.lastFundingRate,
       fetchedAt:Date.now()
     };
-    cachedData=data; saveCache(data); renderSnap(data);
+    cachedData=data; renderSnap(data);
     document.getElementById('fetch-status').textContent='LIVE';document.getElementById('fetch-status').className='pill p-grn';
-    document.getElementById('cache-age').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});document.getElementById('cache-age').className='pill p-mu';
+    document.getElementById('cache-age').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Phnom_Penh'})+' PP';document.getElementById('cache-age').className='pill p-mu';
     document.getElementById('analyze-btn').disabled=false;
   }catch(err){
     setOutput('<div class="err-box">Fetch failed: '+err.message+'<br><br>Binance Futures API may be geo-blocked. Try a VPN or check your connection.</div>');
@@ -331,7 +304,7 @@ function buildPrompt(d,sr,strategy){
   const trend20=d.trendKlines.slice(-20);
   return `You are a professional BTC/USDT futures trader. Analyze all data and return a next-day trading plan with EXACT entry trigger rules so the trader knows precisely what candle to wait for before entering.
 
-SNAPSHOT (${new Date(d.fetchedAt).toLocaleString()}):
+SNAPSHOT (${new Date(d.fetchedAt).toLocaleString('en-US',{timeZone:'Asia/Phnom_Penh'})}):
 Mark: $${d.markPrice.toFixed(2)} | Index: $${d.indexPrice.toFixed(2)} | 24h chg: ${d.t24.chg.toFixed(2)}%
 24h High: $${d.t24.high.toFixed(2)} | Low: $${d.t24.low.toFixed(2)} | Vol: ${d.t24.vol.toFixed(0)} BTC
 OI: ${d.oi.val.toFixed(0)} BTC | Funding next: ${(d.nextFunding*100).toFixed(4)}% | Avg 8 intervals: ${avgFr}%
@@ -657,7 +630,7 @@ function drawChart(r, d){
   ctx.fillStyle='rgba(90,98,112,0.7)'; ctx.font='9px Space Mono,monospace'; ctx.textAlign='center';
   candles.forEach((k,i)=>{
     if(i%8===0){
-      const t=new Date(k.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const t=new Date(k.t).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Phnom_Penh'});
       ctx.fillText(t,cx(i),H-8);
     }
   });
@@ -673,14 +646,7 @@ function drawLevel(ctx,y,x1,x2,color,label,dash){
 
 /* ── INIT ── */
 (function init(){
-  updateCacheUI();
-  const cached=loadCache();
-  if(cached){
-    const age=Math.round((Date.now()-cached.ts)/1000);
-    document.getElementById('fetch-status').textContent='CACHED'; document.getElementById('fetch-status').className='pill p-grn';
-    document.getElementById('cache-age').textContent=age+'s AGO'; document.getElementById('cache-age').className='pill p-mu';
-    cachedData=cached.data; renderSnap(cached.data); document.getElementById('analyze-btn').disabled=false;
-  }
+  // always fetch fresh — no cache
 })();
 </script>
 </body>
