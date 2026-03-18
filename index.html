@@ -542,16 +542,21 @@ function drawChart(r,d){
   const DPR=window.devicePixelRatio||1;
   const CANDLE_W=16;
   const PAD={top:30,bottom:70,left:8,right:90};
-  const chartH=400;
+  // Chart width = max(container width, enough for all candles)
+  const containerW=canvas.parentElement.offsetWidth||900;
+  const minW=PAD.left+PAD.right+N*CANDLE_W;
+  const W=Math.max(containerW, minW);
+  // Auto height: scale proportionally but min 380, max 520
+  const chartH=Math.min(520,Math.max(380,Math.round(W*0.38)));
   const H=chartH+PAD.top+PAD.bottom;
-  const W=PAD.left+PAD.right+N*CANDLE_W;
   canvas.width=W*DPR;
   canvas.height=H*DPR;
   canvas.style.width=W+'px';
   canvas.style.height=H+'px';
   ctx.scale(DPR,DPR);
 
-  const cW=CANDLE_W;
+  // If W > containerW, candles spread evenly; else fixed 16px
+  const cW=W>containerW?CANDLE_W:Math.floor((W-PAD.left-PAD.right)/N);
   const bodyW=Math.max(3,cW-4);
 
   // collect all levels for price range
@@ -565,7 +570,7 @@ function drawChart(r,d){
   const pRange=pMax-pMin||1;
 
   const py=p=>PAD.top+(1-(p-pMin)/pRange)*chartH;
-  const cx=i=>PAD.left+i*CANDLE_W+CANDLE_W/2;
+  const cx=i=>PAD.left+i*cW+cW/2;
 
   // BG
   ctx.fillStyle='#080a0d'; ctx.fillRect(0,0,W,H);
