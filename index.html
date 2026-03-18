@@ -388,8 +388,28 @@ Respond ONLY with valid JSON, no markdown:
   "patterns": ["detected patterns max 5"],
   "funding_note": "one sentence on funding impact on this trade",
   "session_notes": "best time to enter in Phnom Penh time (UTC+7) — London open 3PM, NY open 8PM, overlap 8-11PM",
-  "warnings": ["up to 4 risk warnings"]
-}`;
+  "warnings": ["up to 4 risk warnings"],
+  "projected_candles": [
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0},
+    {"o": 0, "h": 0, "l": 0, "c": 0}
+  ]
+}
+
+IMPORTANT FOR projected_candles: Replace every 0 with real BTC price numbers.
+- 8 candles showing price path from current price toward tp_price
+- LONG signal = candles trend UP to tp_price, SHORT = trend DOWN
+- Each candle o = previous candle c (connected path)
+- Add realistic wicks: h slightly above body, l slightly below
+- Include 1-2 pullback candles — not a straight line
+- Last candle c must be very close to tp_price
+- All prices must be realistic near current mark price
+`;
 }
 
 /* ── ANALYZE ── */
@@ -414,6 +434,7 @@ async function analyze(){
     const text=apiData.content?.find(b=>b.type==='text')?.text||'';
     const clean=text.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
+    console.log('projected_candles:', result.projected_candles);
     renderAll(result,cachedData,goal);
   }catch(err){
     setOutput('<div class="err-box">Analysis failed: '+err.message+'<br>Raw: '+(err.raw||'')+'</div>');
@@ -510,6 +531,13 @@ function renderAll(r,d,goal){
   '</div>';
 
   setOutput(mktHtml+profitBanner+chartHtml+sigHtml+'<div class="disclaimer">AI ANALYSIS ONLY · NOT FINANCIAL ADVICE · ALWAYS MANAGE YOUR OWN RISK</div>');
+  // Show debug info on screen so we can see if projected_candles came back
+  const dbg=document.createElement('div');
+  dbg.style='font-family:Space Mono,monospace;font-size:10px;color:#f7931a;padding:8px 16px;background:#111;border-top:1px solid #222;';
+  const pc=r.projected_candles||[];
+  const valid=pc.filter(c=>c&&+c.o>0&&+c.h>0&&+c.l>0&&+c.c>0);
+  dbg.textContent='DEBUG: projected_candles returned='+pc.length+' valid='+valid.length+(valid.length>0?' FIRST:O'+valid[0].o+' C'+valid[0].c:'');
+  document.getElementById('output').prepend(dbg);
   requestAnimationFrame(()=>drawChart(r,d));
 }
 
@@ -542,7 +570,11 @@ function drawChart(r,d){
   const N=all.length;
 
   // get projected candles early so we can use count for sizing
-  const projCandles=(r.projected_candles||[]).filter(c=>c.h&&c.l);
+  const projCandles=(r.projected_candles||[]).filter(c=>
+    c && +c.o>0 && +c.h>0 && +c.l>0 && +c.c>0
+  );
+  console.log('RAW projected_candles from Claude:', JSON.stringify(r.projected_candles));
+  console.log('Filtered projCandles count:', projCandles.length);
   const totalN=N+projCandles.length;
 
   const DPR=window.devicePixelRatio||1;
