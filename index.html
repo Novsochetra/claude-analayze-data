@@ -120,7 +120,7 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 .mc-lbl{font-family:'Space Mono',monospace;font-size:9px;color:var(--mu);letter-spacing:1px;margin-bottom:4px}
 .mc-val{font-family:'Space Mono',monospace;font-size:12px;font-weight:700}
 .mc-sub{font-size:10px;color:var(--mu2);margin-top:2px}
-.chart-wrap{background:var(--s1);border:1px solid var(--b1);border-radius:12px;overflow:hidden}
+.chart-wrap{background:var(--s1);border:1px solid var(--b1);border-radius:12px;overflow:hidden}.chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
 .chart-hdr{padding:12px 16px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .loading-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;padding:60px;flex:1}
 .spinner{width:26px;height:26px;border:2px solid var(--b2);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
@@ -459,7 +459,7 @@ function renderAll(r,d,goal){
         (r.entry_zone_low&&r.entry_zone_high?'<span class="pill p-acc">ENTRY $'+num(r.entry_zone_low)+'–$'+num(r.entry_zone_high)+'</span>':'')+
       '</div>'+
     '</div>'+
-    '<canvas id="chart-canvas" style="width:100%;display:block"></canvas>'+
+    '<div class="chart-scroll"><canvas id="chart-canvas" style="display:block"></canvas></div>'+
   '</div>';
 
   // SIGNAL
@@ -539,18 +539,20 @@ function drawChart(r,d){
   const tfMs={'15m':900000,'30m':1800000,'1h':3600000}[d.entryTf]||900000;
   const all=[...candles];
   const N=all.length;
-  const W=canvas.offsetWidth||canvas.parentElement.offsetWidth||900;
-  const LABEL_H=50;
-  const H=400+LABEL_H;
-  canvas.width=W*window.devicePixelRatio||W;
-  canvas.height=H*window.devicePixelRatio||H;
+  const DPR=window.devicePixelRatio||1;
+  const CANDLE_W=16;
+  const PAD={top:30,bottom:70,left:8,right:90};
+  const chartH=400;
+  const H=chartH+PAD.top+PAD.bottom;
+  const W=PAD.left+PAD.right+N*CANDLE_W;
+  canvas.width=W*DPR;
+  canvas.height=H*DPR;
+  canvas.style.width=W+'px';
   canvas.style.height=H+'px';
-  ctx.scale(window.devicePixelRatio||1,window.devicePixelRatio||1);
+  ctx.scale(DPR,DPR);
 
-  const PAD={top:30,bottom:LABEL_H,left:8,right:90};
-  const chartH=H-PAD.top-PAD.bottom;
-  const cW=Math.floor((W-PAD.left-PAD.right)/N);
-  const bodyW=Math.max(4,cW-3);
+  const cW=CANDLE_W;
+  const bodyW=Math.max(3,cW-4);
 
   // collect all levels for price range
   const allH=all.map(k=>k.h);
@@ -563,7 +565,7 @@ function drawChart(r,d){
   const pRange=pMax-pMin||1;
 
   const py=p=>PAD.top+(1-(p-pMin)/pRange)*chartH;
-  const cx=i=>PAD.left+i*cW+cW/2;
+  const cx=i=>PAD.left+i*CANDLE_W+CANDLE_W/2;
 
   // BG
   ctx.fillStyle='#080a0d'; ctx.fillRect(0,0,W,H);
@@ -646,17 +648,17 @@ function drawChart(r,d){
     ctx.lineWidth=0.5; ctx.strokeRect(x-bodyW/2,top,bodyW,bh);
   });
 
-  // TIME LABELS — every candle, rotated
+  // TIME LABELS — every candle, rotated 90deg
   ctx.font='9px Space Mono,monospace';
   all.forEach((k,i)=>{
     const x=cx(i);
     const t=new Date(k.t).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:TZ});
     ctx.save();
-    ctx.translate(x,PAD.top+chartH+8);
-    ctx.rotate(-Math.PI/4);
+    ctx.translate(x, PAD.top+chartH+6);
+    ctx.rotate(-Math.PI/2);
     ctx.fillStyle='rgba(100,115,135,0.85)';
-    ctx.textAlign='right';
-    ctx.fillText(t,0,0);
+    ctx.textAlign='left';
+    ctx.fillText(t, 0, 0);
     ctx.restore();
   });
 
